@@ -3,14 +3,16 @@ import { Boom } from '@hapi/boom'
 import qrcode from 'qrcode-terminal'
 import pino from 'pino'
 
-const logger = pino({
+const baileysLogger = pino({ level: 'error' }) // Logger untuk Baileys, hanya error
+
+const appLogger = pino({
   transport: {
-    target: 'pino-pretty', // install pino-pretty
+    target: 'pino-pretty',
     options: {
       colorize: true
     }
   },
-  level: 'error' // Hanya log error dari Baileys
+  level: 'info' // Logger untuk aplikasi, info level
 })
 
 async function connectToWhatsApp() {
@@ -18,24 +20,24 @@ async function connectToWhatsApp() {
 
     const sock = makeWASocket({
         auth: state,
-        logger: logger
+        logger: baileysLogger // Menggunakan logger khusus untuk Baileys
         // printQRInTerminal: true // deprecated
     })
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update
         if (qr) {
-            console.log('QR Code ready to scan')
+            appLogger.info('QR Code ready to scan')
             qrcode.generate(qr, { small: true })
         }
         if (connection === 'close') {
             const shouldReconnect = (lastDisconnect?.error as Boom)?.output?.statusCode !== DisconnectReason.loggedOut
-            console.log('Connection closed, reconnecting:', shouldReconnect)
+            appLogger.warn({ shouldReconnect }, 'Connection closed')
             if (shouldReconnect) {
                 connectToWhatsApp()
             }
         } else if (connection === 'open') {
-            console.log('Connection opened')
+            appLogger.info('Connection opened successfully')
         }
     })
 
@@ -65,9 +67,10 @@ async function connectToWhatsApp() {
                     messageContent = '[Sticker]'
                 }
 
-                console.log(`Message from ${displaySender}: ${messageContent}`)
+                appLogger.info({ sender: displaySender, content: messageContent }, 'Incoming message')
 
                 // Balas semua pesan dengan 'Halo!'
+                appLogger.info('Sending reply: Halo!')
                 await sock.sendMessage(msg.key.remoteJid!, { text: 'Halo!' })
             }
         }
